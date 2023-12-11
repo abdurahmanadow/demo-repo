@@ -4,4 +4,9 @@ Some Description
 
 ## Subheader
 
-Watch Youtube Tutorial
+
+Watch Tutorial on Youtube.
+
+## LOcal Development
+
+1. Open Index.html in your browser
