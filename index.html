@@ -1,1 +1,661 @@
-<div>Hello</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Content Calendar Generator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#F5E6D3',
+                        orange: '#FF8C42',
+                        gold: '#FFB84D',
+                        navy: '#2C3E50',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .spinner {
+            border: 3px solid rgba(255, 140, 66, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #FF8C42;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-cream to-white min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // Content type configurations
+        const CONTENT_TYPES = [
+            'Thought leadership',
+            'Case studies',
+            'Career advice',
+            'Growth tactics',
+            'Company teardowns',
+            'Success stories'
+        ];
+
+        const EXPERTISE_AREAS = [
+            'Growth Marketing',
+            'User Acquisition',
+            'Sales',
+            'AdTech',
+            'Customer Success',
+            'Business Development'
+        ];
+
+        const TONES = ['Professional', 'Conversational', 'Educational', 'Inspirational'];
+        const PLATFORMS = ['LinkedIn', 'X (Twitter)', 'Both'];
+
+        const CONTENT_TYPE_COLORS = {
+            'educational': 'bg-blue-100 border-blue-400 text-blue-800',
+            'storytelling': 'bg-purple-100 border-purple-400 text-purple-800',
+            'engagement': 'bg-green-100 border-green-400 text-green-800',
+            'promotional': 'bg-orange-100 border-orange-400 text-orange-800'
+        };
+
+        const LINKEDIN_POST_TYPES = ['Professional Post', 'Carousel Topic', 'Article Idea'];
+        const X_POST_TYPES = ['Thread', 'Standalone Tweet', 'Engagement Tweet'];
+
+        function App() {
+            const [contentType, setContentType] = useState('Thought leadership');
+            const [expertise, setExpertise] = useState('Growth Marketing');
+            const [tone, setTone] = useState('Professional');
+            const [platform, setPlatform] = useState('Both');
+            const [apiKey, setApiKey] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [generatedContent, setGeneratedContent] = useState([]);
+            const [editingIndex, setEditingIndex] = useState(null);
+            const [editedContent, setEditedContent] = useState('');
+            const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+
+            useEffect(() => {
+                const savedApiKey = localStorage.getItem('anthropic_api_key');
+                if (savedApiKey) {
+                    setApiKey(savedApiKey);
+                }
+            }, []);
+
+            const saveApiKey = (key) => {
+                setApiKey(key);
+                localStorage.setItem('anthropic_api_key', key);
+                setShowApiKeyInput(false);
+            };
+
+            const generateContentDistribution = () => {
+                const distribution = [];
+                const educationalCount = 12; // 40% of 30
+                const storytellingCount = 9;  // 30% of 30
+                const engagementCount = 6;    // 20% of 30
+                const promotionalCount = 3;   // 10% of 30
+
+                for (let i = 0; i < educationalCount; i++) distribution.push('educational');
+                for (let i = 0; i < storytellingCount; i++) distribution.push('storytelling');
+                for (let i = 0; i < engagementCount; i++) distribution.push('engagement');
+                for (let i = 0; i < promotionalCount; i++) distribution.push('promotional');
+
+                // Shuffle array
+                return distribution.sort(() => Math.random() - 0.5);
+            };
+
+            const callAnthropicAPI = async (prompt) => {
+                try {
+                    const response = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey,
+                            'anthropic-version': '2023-06-01'
+                        },
+                        body: JSON.stringify({
+                            model: 'claude-sonnet-4-20250514',
+                            max_tokens: 4000,
+                            messages: [{
+                                role: 'user',
+                                content: prompt
+                            }]
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || 'API request failed');
+                    }
+
+                    const data = await response.json();
+                    return data.content[0].text;
+                } catch (err) {
+                    throw new Error(`API Error: ${err.message}`);
+                }
+            };
+
+            const generateContent = async () => {
+                if (!apiKey) {
+                    setError('Please enter your Anthropic API key first');
+                    setShowApiKeyInput(true);
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+                setGeneratedContent([]);
+
+                try {
+                    const distribution = generateContentDistribution();
+                    const includeLinkedIn = platform === 'LinkedIn' || platform === 'Both';
+                    const includeX = platform === 'X (Twitter)' || platform === 'Both';
+
+                    const prompt = `You are an expert social media content strategist. Generate a 30-day content calendar for ${platform}.
+
+Content Preferences:
+- Content Type: ${contentType}
+- Expertise Area: ${expertise}
+- Tone: ${tone}
+- Platform: ${platform}
+
+Content Mix Requirements:
+- 40% Educational (Days: ${distribution.map((d, i) => d === 'educational' ? i + 1 : null).filter(x => x).join(', ')})
+- 30% Storytelling (Days: ${distribution.map((d, i) => d === 'storytelling' ? i + 1 : null).filter(x => x).join(', ')})
+- 20% Engagement (Days: ${distribution.map((d, i) => d === 'engagement' ? i + 1 : null).filter(x => x).join(', ')})
+- 10% Promotional (Days: ${distribution.map((d, i) => d === 'promotional' ? i + 1 : null).filter(x => x).join(', ')})
+
+For each day, generate:
+${includeLinkedIn ? `
+LinkedIn Content:
+- Professional posts (1300-2000 characters)
+- Carousel topics (8-10 slide outline)
+- Article ideas
+- Best posting time` : ''}
+${includeX ? `
+X (Twitter) Content:
+- Threads (3-7 tweets, each max 280 chars)
+- Standalone tweets (max 280 chars)
+- Engagement tweets
+- Best posting time` : ''}
+
+CRITICAL: Return ONLY valid JSON in this exact format:
+{
+  "calendar": [
+    {
+      "day": 1,
+      "contentCategory": "educational",
+      "linkedin": {
+        "post": "Full LinkedIn post text here (1300-2000 chars)",
+        "carouselTopic": "Carousel topic with 8-10 slide outline",
+        "articleIdea": "Article idea",
+        "postingTime": "9:00 AM"
+      },
+      "x": {
+        "thread": ["Tweet 1", "Tweet 2", "Tweet 3"],
+        "standaloneTweet": "Single tweet text",
+        "engagementTweet": "Engagement question",
+        "postingTime": "2:00 PM"
+      }
+    }
+  ]
+}
+
+Generate all 30 days. Make content authentic, engaging, and human-written. Vary the structure and hooks. Include specific examples and actionable insights.`;
+
+                    const result = await callAnthropicAPI(prompt);
+
+                    // Extract JSON from response
+                    let jsonMatch = result.match(/\{[\s\S]*\}/);
+                    if (!jsonMatch) {
+                        throw new Error('Invalid response format from API');
+                    }
+
+                    const parsedData = JSON.parse(jsonMatch[0]);
+
+                    if (!parsedData.calendar || !Array.isArray(parsedData.calendar)) {
+                        throw new Error('Invalid calendar data structure');
+                    }
+
+                    setGeneratedContent(parsedData.calendar);
+                    setLoading(false);
+                } catch (err) {
+                    setError(err.message);
+                    setLoading(false);
+                }
+            };
+
+            const copyToClipboard = (text) => {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('Copied to clipboard!');
+                });
+            };
+
+            const startEditing = (index, content) => {
+                setEditingIndex(index);
+                setEditedContent(JSON.stringify(content, null, 2));
+            };
+
+            const saveEdit = (index) => {
+                try {
+                    const parsed = JSON.parse(editedContent);
+                    const newContent = [...generatedContent];
+                    newContent[index] = parsed;
+                    setGeneratedContent(newContent);
+                    setEditingIndex(null);
+                } catch (err) {
+                    alert('Invalid JSON format');
+                }
+            };
+
+            const exportToCSV = () => {
+                let csv = 'Day,Category,Platform,Type,Content,Posting Time\n';
+
+                generatedContent.forEach(day => {
+                    if (day.linkedin) {
+                        csv += `${day.day},${day.contentCategory},LinkedIn,Post,"${day.linkedin.post.replace(/"/g, '""')}",${day.linkedin.postingTime}\n`;
+                        csv += `${day.day},${day.contentCategory},LinkedIn,Carousel,"${day.linkedin.carouselTopic.replace(/"/g, '""')}",${day.linkedin.postingTime}\n`;
+                    }
+                    if (day.x) {
+                        csv += `${day.day},${day.contentCategory},X,Thread,"${day.x.thread.join(' | ').replace(/"/g, '""')}",${day.x.postingTime}\n`;
+                        csv += `${day.day},${day.contentCategory},X,Tweet,"${day.x.standaloneTweet.replace(/"/g, '""')}",${day.x.postingTime}\n`;
+                    }
+                });
+
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'content-calendar.csv';
+                a.click();
+            };
+
+            const exportToPDF = () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                doc.setFontSize(16);
+                doc.text('Social Media Content Calendar', 20, 20);
+
+                let y = 35;
+                generatedContent.forEach((day, idx) => {
+                    if (y > 270) {
+                        doc.addPage();
+                        y = 20;
+                    }
+
+                    doc.setFontSize(12);
+                    doc.text(`Day ${day.day} - ${day.contentCategory}`, 20, y);
+                    y += 7;
+
+                    if (day.linkedin) {
+                        doc.setFontSize(10);
+                        const lines = doc.splitTextToSize(`LinkedIn: ${day.linkedin.post.substring(0, 200)}...`, 170);
+                        doc.text(lines, 20, y);
+                        y += lines.length * 5 + 3;
+                    }
+
+                    if (day.x) {
+                        doc.setFontSize(10);
+                        doc.text(`X: ${day.x.standaloneTweet}`, 20, y);
+                        y += 10;
+                    }
+
+                    y += 5;
+                });
+
+                doc.save('content-calendar.pdf');
+            };
+
+            return (
+                <div className="container mx-auto px-4 py-8 max-w-7xl">
+                    <header className="text-center mb-12 fade-in">
+                        <h1 className="text-4xl md:text-5xl font-bold text-navy mb-4">
+                            Social Media Content Calendar Generator
+                        </h1>
+                        <p className="text-lg text-gray-600">
+                            Generate 30 days of optimized content for LinkedIn and X (Twitter)
+                        </p>
+                    </header>
+
+                    {/* API Key Section */}
+                    <div className="bg-white rounded-lg shadow-lg p-6 mb-8 fade-in">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-semibold text-navy">API Configuration</h2>
+                            {apiKey && !showApiKeyInput && (
+                                <span className="text-green-600 text-sm">✓ API Key Set</span>
+                            )}
+                        </div>
+
+                        {(!apiKey || showApiKeyInput) && (
+                            <div className="space-y-4">
+                                <input
+                                    type="password"
+                                    placeholder="Enter your Anthropic API key"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-orange"
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    value={apiKey}
+                                />
+                                <button
+                                    onClick={() => saveApiKey(apiKey)}
+                                    className="bg-orange text-white px-6 py-2 rounded-lg font-semibold hover:bg-opacity-90 transition"
+                                >
+                                    Save API Key
+                                </button>
+                                <p className="text-sm text-gray-600">
+                                    Get your API key from{' '}
+                                    <a href="https://console.anthropic.com/" target="_blank" className="text-orange underline">
+                                        console.anthropic.com
+                                    </a>
+                                </p>
+                            </div>
+                        )}
+
+                        {apiKey && !showApiKeyInput && (
+                            <button
+                                onClick={() => setShowApiKeyInput(true)}
+                                className="text-orange text-sm underline"
+                            >
+                                Change API Key
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Input Interface */}
+                    <div className="bg-white rounded-lg shadow-lg p-6 md:p-8 mb-8 fade-in">
+                        <h2 className="text-2xl font-semibold text-navy mb-6">Content Preferences</h2>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Content Type */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Content Type
+                                </label>
+                                <select
+                                    value={contentType}
+                                    onChange={(e) => setContentType(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-orange transition"
+                                >
+                                    {CONTENT_TYPES.map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Expertise Area */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Expertise Area
+                                </label>
+                                <select
+                                    value={expertise}
+                                    onChange={(e) => setExpertise(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-orange transition"
+                                >
+                                    {EXPERTISE_AREAS.map(area => (
+                                        <option key={area} value={area}>{area}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Tone */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Tone
+                                </label>
+                                <select
+                                    value={tone}
+                                    onChange={(e) => setTone(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-orange transition"
+                                >
+                                    {TONES.map(t => (
+                                        <option key={t} value={t}>{t}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Platform */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Platform
+                                </label>
+                                <select
+                                    value={platform}
+                                    onChange={(e) => setPlatform(e.target.value)}
+                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-orange transition"
+                                >
+                                    {PLATFORMS.map(p => (
+                                        <option key={p} value={p}>{p}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={generateContent}
+                            disabled={loading || !apiKey}
+                            className="mt-8 w-full bg-gradient-to-r from-orange to-gold text-white py-4 px-8 rounded-lg font-bold text-lg hover:shadow-xl transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        >
+                            {loading ? 'Generating Content...' : 'Generate 30-Day Calendar'}
+                        </button>
+                    </div>
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-8 rounded fade-in">
+                            <p className="font-semibold">Error</p>
+                            <p>{error}</p>
+                        </div>
+                    )}
+
+                    {/* Loading Spinner */}
+                    {loading && (
+                        <div className="flex flex-col items-center justify-center py-12 fade-in">
+                            <div className="spinner mb-4"></div>
+                            <p className="text-gray-600">Generating your 30-day content calendar...</p>
+                            <p className="text-sm text-gray-500 mt-2">This may take 30-60 seconds</p>
+                        </div>
+                    )}
+
+                    {/* Generated Content */}
+                    {generatedContent.length > 0 && (
+                        <div className="fade-in">
+                            {/* Export Buttons */}
+                            <div className="bg-white rounded-lg shadow-lg p-6 mb-8">
+                                <h2 className="text-2xl font-semibold text-navy mb-4">Export Options</h2>
+                                <div className="flex flex-wrap gap-4">
+                                    <button
+                                        onClick={exportToCSV}
+                                        className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition"
+                                    >
+                                        Export to CSV
+                                    </button>
+                                    <button
+                                        onClick={exportToPDF}
+                                        className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                                    >
+                                        Export to PDF
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Calendar Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {generatedContent.map((day, index) => (
+                                    <div
+                                        key={index}
+                                        className={`border-l-4 rounded-lg shadow-lg p-6 bg-white hover:shadow-xl transition ${
+                                            CONTENT_TYPE_COLORS[day.contentCategory]
+                                        }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <h3 className="text-xl font-bold">Day {day.day}</h3>
+                                                <span className="text-sm font-semibold uppercase">
+                                                    {day.contentCategory}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => startEditing(index, day)}
+                                                className="text-orange hover:text-gold transition"
+                                            >
+                                                ✏️
+                                            </button>
+                                        </div>
+
+                                        {editingIndex === index ? (
+                                            <div>
+                                                <textarea
+                                                    value={editedContent}
+                                                    onChange={(e) => setEditedContent(e.target.value)}
+                                                    className="w-full h-64 px-3 py-2 border rounded font-mono text-xs"
+                                                />
+                                                <div className="flex gap-2 mt-2">
+                                                    <button
+                                                        onClick={() => saveEdit(index)}
+                                                        className="bg-green-600 text-white px-4 py-2 rounded text-sm"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingIndex(null)}
+                                                        className="bg-gray-400 text-white px-4 py-2 rounded text-sm"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {day.linkedin && (
+                                                    <div className="border-t pt-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className="font-semibold text-blue-700">LinkedIn</h4>
+                                                            <span className="text-xs text-gray-500">
+                                                                {day.linkedin.postingTime}
+                                                            </span>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <p className="text-xs font-medium text-gray-500 mb-1">Post ({day.linkedin.post.length} chars)</p>
+                                                                <p className="text-sm line-clamp-3">{day.linkedin.post}</p>
+                                                                <button
+                                                                    onClick={() => copyToClipboard(day.linkedin.post)}
+                                                                    className="text-xs text-orange mt-1 hover:underline"
+                                                                >
+                                                                    Copy Post
+                                                                </button>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs font-medium text-gray-500 mb-1">Carousel</p>
+                                                                <p className="text-sm line-clamp-2">{day.linkedin.carouselTopic}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs font-medium text-gray-500 mb-1">Article</p>
+                                                                <p className="text-sm line-clamp-2">{day.linkedin.articleIdea}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {day.x && (
+                                                    <div className="border-t pt-4">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h4 className="font-semibold text-black">X (Twitter)</h4>
+                                                            <span className="text-xs text-gray-500">
+                                                                {day.x.postingTime}
+                                                            </span>
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <div>
+                                                                <p className="text-xs font-medium text-gray-500 mb-1">Thread ({day.x.thread.length} tweets)</p>
+                                                                {day.x.thread.map((tweet, i) => (
+                                                                    <p key={i} className="text-sm mb-1">
+                                                                        {i + 1}. {tweet}
+                                                                    </p>
+                                                                ))}
+                                                                <button
+                                                                    onClick={() => copyToClipboard(day.x.thread.join('\n\n'))}
+                                                                    className="text-xs text-orange mt-1 hover:underline"
+                                                                >
+                                                                    Copy Thread
+                                                                </button>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs font-medium text-gray-500 mb-1">
+                                                                    Tweet ({day.x.standaloneTweet.length} chars)
+                                                                </p>
+                                                                <p className="text-sm">{day.x.standaloneTweet}</p>
+                                                                <button
+                                                                    onClick={() => copyToClipboard(day.x.standaloneTweet)}
+                                                                    className="text-xs text-orange mt-1 hover:underline"
+                                                                >
+                                                                    Copy Tweet
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Instructions */}
+                    {generatedContent.length === 0 && !loading && (
+                        <div className="bg-white rounded-lg shadow-lg p-8 mt-8 fade-in">
+                            <h2 className="text-2xl font-semibold text-navy mb-4">How to Use</h2>
+                            <ol className="list-decimal list-inside space-y-3 text-gray-700">
+                                <li>Enter your Anthropic API key (stored locally in your browser)</li>
+                                <li>Select your content preferences from the dropdowns above</li>
+                                <li>Click "Generate 30-Day Calendar" to create your content</li>
+                                <li>Review the generated posts in the calendar view</li>
+                                <li>Click the edit icon to customize any post</li>
+                                <li>Use "Copy" buttons to copy individual posts to your clipboard</li>
+                                <li>Export your entire calendar to CSV or PDF</li>
+                            </ol>
+                            <div className="mt-6 p-4 bg-cream rounded-lg">
+                                <p className="text-sm text-gray-700">
+                                    <strong>Content Distribution:</strong> Each calendar includes 40% educational content,
+                                    30% storytelling, 20% engagement posts, and 10% promotional content, optimized for
+                                    maximum reach and engagement.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
